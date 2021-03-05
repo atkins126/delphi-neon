@@ -24,8 +24,9 @@ unit Demo.Forms.Serialization.Base;
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ExtCtrls, System.Rtti,
+  Winapi.Windows, Winapi.Messages, System.Rtti, System.SysUtils, System.Classes,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ExtCtrls,
+  Vcl.CategoryButtons, System.ImageList, Vcl.ImgList, System.Actions, Vcl.ActnList,
 
   Demo.Frame.Configuration,
   Neon.Core.Persistence,
@@ -39,6 +40,13 @@ type
     pnlDeserialize: TPanel;
     memoDeserialize: TMemo;
     memoLog: TMemo;
+    catSerialize: TCategoryButtons;
+    imlMain: TImageList;
+    catDeserialize: TCategoryButtons;
+    aclMain: TActionList;
+    pnlLeft: TPanel;
+    pnlRight: TPanel;
+    splMain: TSplitter;
   protected
     frmConfiguration: TframeConfiguration;
     procedure Log(const ALog: string; AWhere: TStrings); overload;
@@ -51,6 +59,10 @@ type
     procedure SerializeValueFrom<T>(AValue: TValue; AWhere: TStrings; AConfig: INeonConfiguration);
     function DeserializeValueTo<T>(AWhere: TStrings; AConfig: INeonConfiguration): T; overload;
     function DeserializeValueTo<T>(AValue: T; AWhere: TStrings; AConfig: INeonConfiguration): T; overload;
+
+    procedure SerializeSimple<T>(AValue: T);
+    procedure DeserializeSimple<T>; overload;
+    procedure DeserializeSimple<T>(AValue: T); overload;
   public
     constructor CreateEx(AOwner: TComponent; AConfigForm: TframeConfiguration; AColor: TColor);
   public
@@ -124,6 +136,28 @@ begin
   finally
     LJSON.Free;
   end;
+end;
+
+procedure TfrmSerializationBase.DeserializeSimple<T>;
+var
+  LVal: T;
+begin
+  LVal := DeserializeValueTo<T>(
+    memoSerialize.Lines, frmConfiguration.BuildSerializerConfig);
+
+  SerializeValueFrom<T>(
+    TValue.From<T>(LVal), memoDeserialize.Lines, frmConfiguration.BuildSerializerConfig);
+end;
+
+procedure TfrmSerializationBase.DeserializeSimple<T>(AValue: T);
+var
+  LVal: T;
+begin
+  LVal := DeserializeValueTo<T>(AValue,
+    memoSerialize.Lines, frmConfiguration.BuildSerializerConfig);
+
+  SerializeValueFrom<T>(
+    TValue.From<T>(LVal), memoDeserialize.Lines, frmConfiguration.BuildSerializerConfig);
 end;
 
 function TfrmSerializationBase.DeserializeValueTo<T>(AValue: T; AWhere: TStrings;
@@ -209,6 +243,12 @@ begin
   finally
     LJSON.Free;
   end;
+end;
+
+procedure TfrmSerializationBase.SerializeSimple<T>(AValue: T);
+begin
+  SerializeValueFrom<T>(
+    TValue.From<T>(AValue), memoSerialize.Lines, frmConfiguration.BuildSerializerConfig);
 end;
 
 end.

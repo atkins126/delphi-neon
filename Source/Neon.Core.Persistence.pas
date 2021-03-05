@@ -291,6 +291,10 @@ type
     property Errors: TStrings read FErrors write FErrors;
   end;
 
+  TTypeInfoUtils = class
+    class function EnumToString(ATypeInfo: PTypeInfo; AValue: Integer; ANeonObject: TNeonRttiObject): string; static;
+  end;
+
 
 implementation
 
@@ -657,7 +661,11 @@ end;
 procedure TNeonRttiMember.SetValue(const AValue: TValue);
 begin
   case FMemberType of
-    TNeonMemberType.Prop : MemberAsProperty.SetValue(FParent.Instance, AValue);
+    TNeonMemberType.Prop :
+    begin
+      if MemberAsProperty.IsWritable then
+        MemberAsProperty.SetValue(FParent.Instance, AValue);
+    end;
     TNeonMemberType.Field: MemberAsField.SetValue(FParent.Instance, AValue);
   end;
 end;
@@ -1120,6 +1128,31 @@ class function TSerializerInfo.FromSerializer(ASerializerClass: TCustomSerialize
 begin
   Result.SerializerClass := ASerializerClass;
   Result.Distance := ASerializerClass.ClassDistance;
+end;
+
+{ TTypeInfoUtils }
+
+class function TTypeInfoUtils.EnumToString(ATypeInfo: PTypeInfo; AValue: Integer;
+    ANeonObject: TNeonRttiObject): string;
+var
+  LTypeData: PTypeData;
+begin
+  Result := '';
+
+  LTypeData := GetTypeData(ATypeInfo);
+  if (AValue >= LTypeData.MinValue) and (AValue <= LTypeData.MaxValue) then
+  begin
+    Result := GetEnumName(ATypeInfo, AValue);
+
+    if Length(ANeonObject.NeonEnumNames) > 0 then
+    begin
+      if (AValue >= Low(ANeonObject.NeonEnumNames)) and
+         (AValue <= High(ANeonObject.NeonEnumNames)) then
+        Result := ANeonObject.NeonEnumNames[AValue]
+    end;
+  end
+  else
+    raise ENeonException.Create('Enum value out of bound: ' + AValue.ToString);
 end;
 
 end.

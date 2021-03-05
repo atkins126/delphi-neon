@@ -37,9 +37,33 @@ uses
 {$SCOPEDENUMS ON}
 
 type
+  TCustomDate = type TDateTime;
+
+  TDates = record
+    Date: TDateTime;
+    Time: TTime;
+    Custom: TCustomDate;
+    procedure SampleData;
+  end;
 
   [NeonEnumNames('Low Speed,Medium Speed,High Speed')]
   TEnumSpeed = (Low, Medium, High);
+
+  TSetSpeed = set of TEnumSpeed;
+
+  TArraySpeed = TArray<TEnumSpeed>;
+
+  TArrayDuplicates = TArray<TDuplicates>;
+
+  TSetDuplicates = set of TDuplicates;
+
+  TSetBoolean = set of Boolean;
+
+  TWeekDays = 1..7;
+  TSetWeekDays = set of TWeekDays;
+
+  TUppercase = 'A'..'Z';
+  TSetUppercase = set of TUppercase;
 
   TManagedRecord = record
     Name: string;
@@ -669,7 +693,7 @@ end;
 
 function TAddress.ToString: string;
 begin
-  Result := 'Key-' + FCity;
+  Result := FCity;
 end;
 
 
@@ -698,6 +722,15 @@ begin
   begin
     Result := True;
   end;
+end;
+
+{ TDates }
+
+procedure TDates.SampleData;
+begin
+  Date := Now;
+  Time := Now + 0.5;
+  Custom := Now + 2;
 end;
 
 initialization

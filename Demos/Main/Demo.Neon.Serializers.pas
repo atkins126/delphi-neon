@@ -69,9 +69,28 @@ type
     function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
   end;
 
+  TTimeSerializer = class(TCustomSerializer)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue; override;
+    function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
+  end;
+
+  TCustomDateSerializer = class(TCustomSerializer)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue; override;
+    function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
+  end;
+
 implementation
 
 uses
+  System.DateUtils,
   Neon.Core.Utils;
 
 { TPoint3DSerializer }
@@ -280,6 +299,81 @@ begin
   LJSON.AddPair('Note', AContext.WriteDataMember(TValue.From<TNote>(LObj.Note)));
 
   Result := LJSON;
+end;
+
+{ TTimeSerializer }
+
+class function TTimeSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := TypeInfo(TTime);
+end;
+
+function TTimeSerializer.Serialize(const AValue: TValue; ANeonObject:
+    TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LTime: TTime;
+  LHours, LMinutes, LSeconds, LMilli: Word;
+begin
+  LTime := AValue.AsType<TTime>;
+  DecodeTime(LTime, LHours, LMinutes, LSeconds, LMilli);
+  Result := TJSONString.Create(Format('%.2d:%.2d:%.2d', [LHours, LMinutes, LSeconds]));
+end;
+
+class function TTimeSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  if AType = GetTargetInfo then
+    Result := True
+  else
+    Result := False;
+end;
+
+function TTimeSerializer.Deserialize(AValue: TJSONValue; const AData: TValue;
+    ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue;
+var
+  LTime: TTime;
+begin
+  LTime := StrToTime(AValue.Value);
+  Result := TValue.From<TTime>(LTime);
+end;
+
+{ TCustomDateSerializer }
+
+class function TCustomDateSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  if AType = GetTargetInfo then
+    Result := True
+  else
+    Result := False;
+end;
+
+function TCustomDateSerializer.Deserialize(AValue: TJSONValue;
+  const AData: TValue; ANeonObject: TNeonRttiObject;
+  AContext: IDeserializerContext): TValue;
+var
+  LDate: TCustomDate;
+  LFormats: TFormatSettings;
+begin
+  LFormats := TFormatSettings.Create;
+  LFormats.DateSeparator := '|';
+  LFormats.ShortDateFormat := 'yyyy|mm|dd';
+  LDate := StrToDate(AValue.Value, LFormats);
+  Result := TValue.From<TCustomDate>(LDate);
+end;
+
+class function TCustomDateSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := System.TypeInfo(TCustomDate);
+end;
+
+function TCustomDateSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LDate: TCustomDate;
+  LYear, LMonth, LDay: Word;
+begin
+  LDate := AValue.AsType<TCustomDate>;
+  DecodeDate(LDate, LYear, LMonth, LDay);
+  Result := TJSONString.Create(Format('%d|%.2d|%.2d', [LYear, LMonth, LDay]));
 end;
 
 end.

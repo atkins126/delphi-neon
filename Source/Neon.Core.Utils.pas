@@ -122,6 +122,7 @@ type
     class function ForEachField(AInstance: TObject; const ADoSomething: TFunc<TRttiField, Boolean>): Integer;
 
     class function GetType(AObject: TRttiObject): TRttiType;
+    class function GetSetElementType(ASetType: TRttiType): TRttiType;
 
     class function ClassDistanceFromRoot(AClass: TClass): Integer; overload; static;
     class function ClassDistanceFromRoot(AInfo: PTypeInfo): Integer; overload; static;
@@ -177,7 +178,8 @@ function TValueToJSONObject(AObject: TJSONObject; const AName: string; const AVa
 implementation
 
 uses
-  System.StrUtils, System.DateUtils;
+  System.StrUtils, System.DateUtils,
+  Neon.Core.Types;
 
 type
   TJSONFieldType = (NestedObject, NestedArray, SimpleValue);
@@ -294,16 +296,17 @@ var
   LAllocatedMem: Pointer;
 begin
   case AType.TypeKind of
-    tkInteger: Result := TValue.From<Integer>(0);
-    tkInt64:   Result := TValue.From<Int64>(0);
-    tkChar:    Result := TValue.From<UTF8Char>(#0);
-    tkWChar:   Result := TValue.From<Char>(#0);
-    tkFloat:   Result := TValue.From<Double>(0);
-    tkString:  Result := TValue.From<UTF8String>('');
-    tkWString: Result := TValue.From<string>('');
-    tkLString: Result := TValue.From<UTF8String>('');
-    tkUString: Result := TValue.From<string>('');
-    tkClass:   Result := CreateInstance(AType);
+    tkEnumeration: Result := TValue.From<Byte>(0);
+    tkInteger:     Result := TValue.From<Integer>(0);
+    tkInt64:       Result := TValue.From<Int64>(0);
+    tkChar:        Result := TValue.From<UTF8Char>(#0);
+    tkWChar:       Result := TValue.From<Char>(#0);
+    tkFloat:       Result := TValue.From<Double>(0);
+    tkString:      Result := TValue.From<UTF8String>('');
+    tkWString:     Result := TValue.From<string>('');
+    tkLString:     Result := TValue.From<UTF8String>('');
+    tkUString:     Result := TValue.From<string>('');
+    tkClass:       Result := CreateInstance(AType);
     tkRecord:
     begin
       LAllocatedMem := AllocMem(AType.TypeSize);
@@ -592,6 +595,14 @@ begin
     if LBreak then
       Break;
   end;
+end;
+
+class function TRttiUtils.GetSetElementType(ASetType: TRttiType): TRttiType;
+var
+  LEnumInfo: PPTypeInfo;
+begin
+  LEnumInfo := GetTypeData(ASetType.Handle)^.CompType;
+  Result := TRttiUtils.Context.GetType(LEnumInfo^);
 end;
 
 class function TRttiUtils.GetType(AObject: TRttiObject): TRttiType;
@@ -1244,6 +1255,9 @@ var
   LJSONItem: TJSONObject;
   LIndex: Integer;
 begin
+  if not (AJSONValue is TJSONArray) then
+    raise ENeonException.Create('JSONToDataSet: The JSON must be an array');
+
   LJSONArray := AJSONValue as TJSONArray;
 
   for LIndex := 0 to LJSONArray.Count - 1 do

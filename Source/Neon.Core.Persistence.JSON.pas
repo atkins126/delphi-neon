@@ -627,29 +627,10 @@ end;
 
 function TNeonSerializerJSON.WriteEnum(const AValue: TValue; ANeonObject: TNeonRttiObject): TJSONValue;
 var
-  LValue: Int64;
-  LTypeData: PTypeData;
   LName: string;
 begin
-  LName := '';
-  LValue := AValue.AsOrdinal;
-  LTypeData := GetTypeData(AValue.TypeInfo);
-
-  if (LValue >= LTypeData.MinValue) and (LValue <= LTypeData.MaxValue) then
-  begin
-    LName := GetEnumName(AValue.TypeInfo, LValue);
-
-    if Length(ANeonObject.NeonEnumNames) > 0 then
-    begin
-      if (LValue >= Low(ANeonObject.NeonEnumNames)) and
-         (LValue <= High(ANeonObject.NeonEnumNames)) then
-        LName := ANeonObject.NeonEnumNames[LValue]
-    end;
-
-    Result := TJSONString.Create(LName);
-  end
-  else
-    raise ENeonException.Create('Enum value out of bound: ' + LValue.ToString);
+  LName := TTypeInfoUtils.EnumToString(AValue.TypeInfo, AValue.AsOrdinal, ANeonObject);
+  Result := TJSONString.Create(LName);
 end;
 
 function TNeonSerializerJSON.WriteFloat(const AValue: TValue; ANeonObject: TNeonRttiObject): TJSONValue;
@@ -690,6 +671,8 @@ end;
 
 procedure TNeonSerializerJSON.WriteMembers(AType: TRttiType; AInstance: Pointer; AResult: TJSONValue);
 var
+  LPairName: string;
+  LPair: TJSONPair;
   LJSONValue: TJSONValue;
   LMembers: TNeonRttiMembers;
   LNeonMember: TNeonRttiMember;
@@ -704,7 +687,11 @@ begin
         try
           LJSONValue := WriteDataMember(LNeonMember.GetValue, LNeonMember);
           if Assigned(LJSONValue) then
-            (AResult as TJSONObject).AddPair(GetNameFromMember(LNeonMember), LJSONValue);
+          begin
+            LPairName := GetNameFromMember(LNeonMember);
+            LPair := TJSONPair.Create(LPairName, LJSONValue);
+            (AResult as TJSONObject).AddPair(LPair);
+          end;
         except
           on E: Exception do
           begin
@@ -729,14 +716,14 @@ begin
     IncludeIf.Always, IncludeIf.CustomFunction:
     begin
       if ANullable.HasValue then
-        Result := WriteDataMember(ANullable.GetValue, ANeonObject)
+        Result := WriteDataMember(ANullable.GetValue)
       else
         Result := TJSONNull.Create;
     end;
     IncludeIf.NotNull, IncludeIf.NotEmpty, IncludeIf.NotDefault:
     begin
       if ANullable.HasValue then
-        Result := WriteDataMember(ANullable.GetValue, ANeonObject);
+        Result := WriteDataMember(ANullable.GetValue);
     end;
   end;
 end;
@@ -873,15 +860,44 @@ end;
 
 function TNeonSerializerJSON.WriteSet(const AValue: TValue; ANeonObject: TNeonRttiObject): TJSONValue;
 var
-  LRes: string;
+  LArray: TJSONArray;
+  LElementType: PPTypeInfo;
+  LIntegerValue: TIntegerSet;
+  LIndex: Integer;
+  LJSONValue: TJSONValue;
+  LValue: TValue;
 begin
-  LRes := SetToString(AValue.TypeInfo, Integer(AValue.GetReferenceToRawData^), True);
+  LArray := TJSONArray.Create;
+
+  Integer(LIntegerValue) := Integer(AValue.GetReferenceToRawData^);
+
+  LElementType := GetTypeData(AValue.TypeInfo)^.CompType;
+  if LElementType <> nil then
+  begin
+    for LIndex := 0 to SizeOf(Integer) * 8 - 1 do
+      if LIndex in LIntegerValue then
+      begin
+        TValue.Make(LIndex, LElementType^, LValue);
+        LJSONValue := WriteDataMember(LValue);
+        LArray.AddElement(LJSONValue);
+      end;
+  end
+  else
+  begin
+    for LIndex := 0 to SizeOf(Integer) * 8 - 1 do
+      if LIndex in LIntegerValue then
+      begin
+        LValue := LIndex;
+        LJSONValue := WriteDataMember(LValue);
+        LArray.AddElement(LJSONValue);
+      end;
+  end;
 
   if ANeonObject.NeonInclude.Value = IncludeIf.NotEmpty then
-    if LRes = '[]' then
-      Exit(nil);
+    if LArray.Count = 0 then
+      FreeAndNil(LArray);
 
-  Result := TJSONString.Create(LRes);
+  Result := LArray;
 end;
 
 function TNeonSerializerJSON.WriteStreamable(const AValue: TValue; ANeonObject: TNeonRttiObject; AStream: IDynamicStream): TJSONValue;
@@ -1020,21 +1036,28 @@ var
 begin
   Result := AData;
 
-  LParam.NeonObject := AParam.NeonObject;
-  // Clear (and Free) previous elements?
+  //TODO -oPaolo -cGeneral : Clear (and Free) previous array elements?
+
   LJSONArray := AParam.JSONValue as TJSONArray;
   LParam.RttiType := (AParam.RttiType as TRttiDynamicArrayType).ElementType;
-  LArrayLength := LJSONArray.Count;
-  DynArraySetLength(PPointer(Result.GetReferenceToRawData)^, Result.TypeInfo, 1, @LArrayLength);
+  LParam.NeonObject := TNeonRttiObject.Create(LParam.RttiType, FOperation);
+  try
+    LParam.NeonObject.ParseAttributes;
 
-  for LIndex := 0 to LJSONArray.Count - 1 do
-  begin
-    LParam.JSONValue := LJSONArray.Items[LIndex];
+    LArrayLength := LJSONArray.Count;
+    DynArraySetLength(PPointer(Result.GetReferenceToRawData)^, Result.TypeInfo, 1, @LArrayLength);
 
-    LItemValue := TRttiUtils.CreateNewValue(LParam.RttiType);
-    LItemValue := ReadDataMember(LParam, LItemValue);
+    for LIndex := 0 to LJSONArray.Count - 1 do
+    begin
+      LParam.JSONValue := LJSONArray.Items[LIndex];
 
-    Result.SetArrayElement(LIndex, LItemValue);
+      LItemValue := TRttiUtils.CreateNewValue(LParam.RttiType);
+      LItemValue := ReadDataMember(LParam, LItemValue);
+
+      Result.SetArrayElement(LIndex, LItemValue);
+    end;
+  finally
+    LParam.NeonObject.Free;
   end;
 end;
 
@@ -1071,9 +1094,6 @@ function TNeonDeserializerJSON.ReadDataMember(const AParam: TNeonDeserializerPar
 var
   LCustom: TCustomSerializer;
 begin
-  if AParam.JSONValue is TJSONNull then
-    Exit(TValue.Empty);
-
   // if there is a custom serializer
   LCustom := FConfig.Serializers.GetSerializer(AParam.RttiType.Handle);
 
@@ -1081,6 +1101,11 @@ begin
   begin
     Result := LCustom.Deserialize(AParam.JSONValue, AData, AParam.NeonObject, Self);
     Exit(Result);
+  end
+  else
+  begin
+    if AParam.JSONValue is TJSONNull then
+      Exit(TValue.Empty);
   end;
 
   case AParam.RttiType.TypeKind of
@@ -1388,12 +1413,34 @@ end;
 
 function TNeonDeserializerJSON.ReadSet(const AParam: TNeonDeserializerParam): TValue;
 var
-  LSetStr: string;
+  LJSONValue: TJSONValue;
+  LJSONArray: TJSONArray;
+  LValue: TValue;
+  LEnumType: TRttiType;
+  LSet: Integer;
 begin
-  LSetStr := AParam.JSONValue.Value;
-  LSetStr := LSetStr.Replace(sLineBreak, '', [rfReplaceAll]);
-  LSetStr := LSetStr.Replace(' ', '', [rfReplaceAll]);
-  TValue.Make(StringToSet(AParam.RttiType.Handle, LSetStr), AParam.RttiType.Handle, Result);
+  Result := nil;
+
+  LEnumType := TRttiUtils.GetSetElementType(AParam.RttiType);
+
+  if AParam.JSONValue is TJSONArray then
+    LJSONArray := AParam.JSONValue as TJSONArray
+  else
+    raise ENeonException.Create('Set deserialization: Expected JSON Array');
+
+  LSet := 0;
+  for LJSONValue in LJSONArray do
+  begin
+    if LJSONValue is TJSONNumber then
+      LValue := (LJSONValue as TJSONNumber).AsInt
+    else if LJSONValue is TJSONBool then
+      LValue := (LJSONValue as TJSONBool).AsBoolean
+    else if LJSONValue is TJSONString then
+      LValue := ReadDataMember(LJSONValue, LEnumType, TValue.Empty);
+
+    Include(TIntegerSet(LSet), LValue.AsOrdinal);
+  end;
+  TValue.Make(LSet, AParam.RttiType.Handle, Result);
 end;
 
 function TNeonDeserializerJSON.ReadStreamable(const AParam: TNeonDeserializerParam; const AData: TValue): Boolean;
@@ -1631,15 +1678,15 @@ var
   end;
 
 begin
+  LJSONString := AJSONValue.ToJSON;
   if not APretty then
   begin
-    AWriter.Write(AJSONValue.ToJSON);
+    AWriter.Write(LJSONString);
     Exit;
   end;
 
   LOffset := 0;
   LOutsideString := True;
-  LJSONString := AJSONValue.ToJSON;
 
   for LIndex := 0 to Length(LJSONString) - 1 do
   begin
